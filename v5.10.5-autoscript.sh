@@ -116,27 +116,27 @@ echo 'export PORT='$PORT
 
 # Setting environment variables
 echo "export MONIKER=$MONIKER" >> $HOME/.bash_profile
-echo "export ZENROCK_CHAIN_ID=\"empe-testnet-2\"" >> $HOME/.bash_profile
+echo "export ZENROCK_CHAIN_ID=\"gardia-3\"" >> $HOME/.bash_profile
 echo "export ZENROCK_PORT=$PORT" >> $HOME/.bash_profile
 source $HOME/.bash_profile
 
 printLine
 echo -e "Moniker:        \e[1m\e[32m$MONIKER\e[0m"
-echo -e "Chain ID:       \e[1m\e[32m$EMPE_CHAIN_ID\e[0m"
-echo -e "Node custom port:  \e[1m\e[32m$EMPED_PORT\e[0m"
+echo -e "Chain ID:       \e[1m\e[32m$ZENROCK_CHAIN_ID\e[0m"
+echo -e "Node custom port:  \e[1m\e[32m$ZENROCK_PORT\e[0m"
 printLine
 sleep 1
 
 # Install Go
 printGreen "2. Installing Go..." && sleep 1
 cd $HOME
-VER="1.23.0"
+VER="1.23.1"
 wget "https://golang.org/dl/go$VER.linux-amd64.tar.gz"
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf "go$VER.linux-amd64.tar.gz"
 rm "go$VER.linux-amd64.tar.gz"
 [ ! -f ~/.bash_profile ] && touch ~/.bash_profile
-echo "export PATH=\$PATH:/usr/local/go/bin:~/go/bin" >> ~/.bash_profile
+echo "export PATH=$PATH:/usr/local/go/bin:~/go/bin" >> ~/.bash_profile
 source $HOME/.bash_profile
 [ ! -d ~/go/bin ] && mkdir -p ~/go/bin
 
@@ -144,23 +144,24 @@ source $HOME/.bash_profile
 echo $(go version) && sleep 1
 
 # Download Prysm protocol binary
-printGreen "3. Downloading Empeiria binary and setting up..." && sleep 1
+printGreen "3. Downloading Zenrock binary and setting up..." && sleep 1
 cd $HOME
-mkdir -p $HOME/.empe-chain/cosmovisor/upgrades/v0.2.2/bin
-wget https://github.com/empe-io/empe-chain-releases/raw/master/v0.2.2/emped_v0.2.2_linux_amd64.tar.gz
-tar -xvf emped_v0.2.2_linux_amd64.tar.gz
-rm -rf emped_v0.2.2_linux_amd64.tar.gz
-chmod +x emped
-mv $HOME/emped $HOME/.empe-chain/cosmovisor/upgrades/v0.2.2/bin
-sudo ln -s $HOME/.empe-chain/cosmovisor/upgrades/v0.2.2 $HOME/.empe-chain/cosmovisor/current -f
-sudo ln -s $HOME/.empe-chain/cosmovisor/current/bin/emped /usr/local/bin/emped -f
+mkdir -p $HOME/.zrchain/cosmovisor/upgrades/v5rev4/bin
+wget -O zenrockd.zip https://github.com/Zenrock-Foundation/zrchain/releases/download/v5.10.5/zenrockd.zip
+unzip zenrockd.zip
+rm zenrockd.zip
+chmod +x $HOME/zenrockd
+mv $HOME/zenrockd $HOME/.zrchain/cosmovisor/upgrades/v5rev4/bin/
+
+sudo ln -sfn $HOME/.zrchain/cosmovisor/upgrades/v5rev4 $HOME/.zrchain/cosmovisor/current
+sudo ln -sfn $HOME/.zrchain/cosmovisor/current/bin/zenrockd /usr/local/bin/zenrockd
+
 go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@v1.6.0
 
 # Create service file
-printGreen "6. Creating service file..." && sleep 1
-sudo tee /etc/systemd/system/emped.service > /dev/null << EOF
+sudo tee /etc/systemd/system/zenrockd.service > /dev/null << EOF
 [Unit]
-Description=empe-chain node service
+Description=zenrock node service
 After=network-online.target
 
 [Service]
@@ -169,28 +170,41 @@ ExecStart=$(which cosmovisor) run start
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
-Environment="DAEMON_HOME=${HOME}/.empe-chain"
-Environment="DAEMON_NAME=emped"
+Environment="DAEMON_HOME=$HOME/.zrchain"
+Environment="DAEMON_NAME=zenrockd"
 Environment="UNSAFE_SKIP_BACKUP=true"
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:$HOME/.emped/cosmovisor/current/bin"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:$HOME/.zrchain/cosmovisor/current/bin"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 
+
 # Enable the service
 sudo systemctl daemon-reload
-sudo systemctl enable emped
-
+sudo systemctl enable zenrockd
 # Initialize the node
 printGreen "7. Initializing the node..."
-emped init ${MONIKER} --chain-id ${EMPE_CHAIN_ID}
+zenrockd init moniker-name --chain-id gardia-3
+zenrockd config set client chain-id gardia-3
+zenrockd config set client node tcp://localhost:${ZENROCK_PORT}657
+sed -i -e '/^keyring-backend = /c\keyring-backend = "test"' $HOME/.zrchain/config/client.toml
 
 # Download genesis and addrbook files
 printGreen "8. Downloading genesis and addrbook..."
-wget -O $HOME/.empe-chain/config/genesis.json https://raw.githubusercontent.com/hazennetworksolutions/empeiria/refs/heads/main/genesis.json
-wget -O $HOME/.empe-chain/config/addrbook.json  https://raw.githubusercontent.com/hazennetworksolutions/empeiria/refs/heads/main/addrbook.json
+wget -O $HOME/.zrchain/config/genesis.json https://raw.githubusercontent.com/hazennetworksolutions/zenrock/refs/heads/main/genesis.json
+wget -O $HOME/.zrchain/config/addrbook.json  https://raw.githubusercontent.com/hazennetworksolutions/zenrock/refs/heads/main/addrbook.json
+
+rm -rf $HOME/.zrchain/config/app.toml
+wget https://raw.githubusercontent.com/zenrocklabs/zenrock-validators/refs/heads/master/scaffold_setup/configs_testnet/app.toml -O $HOME/.zrchain/config/app.toml
+
+rm -rf /root/.zrchain/config/config.toml
+wget https://raw.githubusercontent.com/zenrocklabs/zenrock-validators/refs/heads/master/scaffold_setup/configs_testnet/config.toml -O $HOME/.zrchain/config/config.toml
+
+
+sed -i "s/^moniker = .*/moniker = \"$MONIKER\"/" $HOME/.zrchain/config/config.toml
+
 
 # Configure gas prices and ports
 printGreen "9. Configuring custom ports and gas prices..." && sleep 1
